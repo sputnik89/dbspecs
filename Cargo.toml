@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+# Matches Verus 0.2026.09.06.8dea4a2 and the Rust pin in rust-toolchain.toml.
 vstd = "=0.0.0-2026-09-06-0133"
 
 [package.metadata.verus]

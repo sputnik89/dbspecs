@@ -1,0 +1,4 @@
+{
+  "functions": ["get", "put", "delete"],
+  "consistency": "linearizability"
+}

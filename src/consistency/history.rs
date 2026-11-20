@@ -19,6 +19,7 @@ impl<K, V> Event<K, V> {
         }
     }
 
+    /// Only invocations carry session IDs.
     pub open spec fn same_session(self, other: Self) -> bool {
         match (self, other) {
             (Event::Invoke { session: first, .. }, Event::Invoke { session: second, .. }) =>
@@ -30,16 +31,43 @@ impl<K, V> Event<K, V> {
 
 /// Both arguments are event indices. A response matches an earlier invocation by ID.
 pub open spec fn responds_to<K, V>(history: History<K, V>, invocation: int, response: int) -> bool {
+    // Both events must be in bounds, with the response after the invocation.
     &&& 0 <= invocation < response < history.len()
+    // The earlier event starts the call.
     &&& history[invocation] is Invoke
+    // The later event returns from a call.
     &&& history[response] is Respond
+    // Both events must refer to the same call.
     &&& history[invocation].id() == history[response].id()
+}
+
+/// Preserve the earlier history and append exactly this request and its reply.
+pub open spec fn records_call<K, V>(
+    before: History<K, V>,
+    after: History<K, V>,
+    operation: Op<K, V>,
+    response: Reply<V>,
+) -> bool {
+    let invocation = before.len() as int;
+    let reply_index = invocation + 1;
+    // The recorded call adds exactly two events and preserves all earlier events.
+    &&& after.len() == before.len() + 2
+    &&& after.take(invocation) =~= before
+    // The new events share a call ID and contain the operation and reply for this method.
+    &&& responds_to(after, invocation, reply_index)
+    &&& match (after[invocation], after[reply_index]) {
+        (Event::Invoke { op, .. }, Event::Respond { reply, .. }) =>
+            op == operation && reply == response,
+        _ => false,
+    }
 }
 
 /// Both arguments are invocation indices. The first call returns before the second starts.
 pub open spec fn precedes<K, V>(history: History<K, V>, first: int, second: int) -> bool {
+    // The second call must start at an actual event in the history.
     &&& 0 <= second < history.len()
     &&& history[second] is Invoke
+    // The first call must have a matching response before the second starts.
     &&& exists |r: int| #[trigger] responds_to(history, first, r) && r < second
 }
 
