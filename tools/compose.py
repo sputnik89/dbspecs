@@ -59,10 +59,7 @@ def render_method(name, spec, consistency, restrict_operations):
     args, variant, inputs, result, reply = FUNCTION_SPECS[spec]
     op = f"Op::{variant}({inputs})"
     requires = [f"{consistency}(old(self).history(), Map::empty())"]
-    ensures = [
-        f"records_call(old(self).history(), final(self).history(), {op}, {reply})",
-        f"{consistency}(final(self).history(), Map::empty())",
-    ]
+    ensures = [f"{consistency}(final(self).history(), Map::empty())"]
     if restrict_operations:
         requires.append("allowed_operations(old(self).history())")
         ensures.append("allowed_operations(final(self).history())")
@@ -73,6 +70,12 @@ def render_method(name, spec, consistency, restrict_operations):
         requires
 {preconditions}
         ensures
+            records_call(
+                old(self).history(),
+                final(self).history(),
+                {op},
+                {reply},
+            ),
 {postconditions}
     ;
 """

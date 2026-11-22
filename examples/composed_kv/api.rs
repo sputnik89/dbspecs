@@ -18,7 +18,12 @@ pub trait KvStore<K, V> {
         requires
             linearizable(old(self).history(), Map::empty()),
         ensures
-            records_call(old(self).history(), final(self).history(), Op::Get(key), Reply::Value(value)),
+            records_call(
+                old(self).history(),
+                final(self).history(),
+                Op::Get(key),
+                Reply::Value(value),
+            ),
             linearizable(final(self).history(), Map::empty()),
     ;
 
@@ -26,7 +31,12 @@ pub trait KvStore<K, V> {
         requires
             linearizable(old(self).history(), Map::empty()),
         ensures
-            records_call(old(self).history(), final(self).history(), Op::Put(key, value), Reply::Ack),
+            records_call(
+                old(self).history(),
+                final(self).history(),
+                Op::Put(key, value),
+                Reply::Ack,
+            ),
             linearizable(final(self).history(), Map::empty()),
     ;
 
@@ -34,7 +44,12 @@ pub trait KvStore<K, V> {
         requires
             linearizable(old(self).history(), Map::empty()),
         ensures
-            records_call(old(self).history(), final(self).history(), Op::Delete(key), Reply::Ack),
+            records_call(
+                old(self).history(),
+                final(self).history(),
+                Op::Delete(key),
+                Reply::Ack,
+            ),
             linearizable(final(self).history(), Map::empty()),
     ;
 }
