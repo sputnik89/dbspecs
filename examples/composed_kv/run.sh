@@ -18,7 +18,8 @@ stage="$repo_root/examples/$target_name"
 mkdir -- "$stage"
 trap 'rm -rf -- "$stage"' EXIT
 python3 "$repo_root/tools/compose.py" "$recipe" --output "$stage/api.rs"
-cp -- "$example_dir/main.rs" "$stage/main.rs"
+# Any recipe can be checked without looking for the default demo's methods.
+printf 'pub mod api;\n\nfn main() {}\n' > "$stage/main.rs"
 
 (
     cd -- "$repo_root"

@@ -1,6 +1,9 @@
 # dbspec
 
-Verus specifications for a sequential key-value store and consistency models for its histories.
+dbspec is a Verus library for specifying key-value store behavior. The functional
+spec defines what `get`, `put`, and `delete` do to a map one call at a time.
+The consistency specs describe which histories are valid when calls from
+different sessions overlap. Each session can have one outstanding call.
 
 | Model | Required replay |
 | --- | --- |
@@ -16,45 +19,33 @@ differently.
 
 ## Compose a public KV API
 
-The [example recipe](examples/composed_kv/spec.json) selects the methods and
-the guarantee on their shared history:
-
-```json
-{
-  "functions": ["get", "put", "delete"],
-  "consistency": "linearizability"
-}
-```
-
-Pass the JSON file to the composer:
+The [example](examples/composed_kv/README.md) takes a JSON recipe and produces a
+Verus API with a contract on each selected operation. Pick any subset of the
+registered operations and one or more consistency models. Each contract connects
+the call and its reply to the store's history and checks the selected models
+against that history.
+With the [toolchain](#toolchain) installed, run it from the repo root.
 
 ```sh
-python3 tools/compose.py examples/composed_kv/spec.json -o examples/composed_kv/api.rs
+bash examples/composed_kv/run.sh examples/composed_kv/spec.json
 ```
 
-The composer prints the API to stdout unless you pass `--output`. To type-check
-the checked-in example, run:
-
-```sh
-cargo verus verify --locked --check-toolchain --example composed_kv -- --no-verify
-```
-
-The generated [`KvStore<K, V>`](examples/composed_kv/api.rs) trait contains
-bodyless method declarations. Each method names the selected consistency
-predicate in its `requires` and `ensures`, and its postcondition binds the
-actual arguments and reply to the call added to the history. The selected
-model applies the existing KV rules to that history from an empty map.
-
-A function name such as `"get"` selects the KV spec with the same name.
-To expose it under a different API name, use
-`{"name": "lookup", "spec": "get"}` in the `functions` list.
-
-The methods take `&mut self` so the contracts can describe the history before and
-after each call. This interface describes exclusive calls on a handle.
-The recipe also accepts `"sequential_consistency"` and `"causal_consistency"`.
-The history may contain only operations selected by the recipe.
+The runner type-checks the generated API and saves it to `target/composed-kv/api.rs`.
 
 ## Toolchain
+
+From the repo root, run:
+
+```sh
+bash tools/install.sh
+```
+
+The installer sets up Rustup if needed, installs the pinned Rust toolchain, and
+fetches the dependencies in `Cargo.lock`. It installs Verus and its bundled Z3
+solver under `.tools/` on macOS (Apple Silicon or Intel) and x86-64 Linux. Run the
+export commands it prints to select those tools in your shell. The installer
+requires `curl`, `unzip`, and either `sha256sum` or `shasum`. The composer uses
+Python 3.
 
 Use these versions together:
 
@@ -64,7 +55,7 @@ Use these versions together:
 | Verus and `cargo-verus` | `0.2026.09.06.8dea4a2` |
 | `vstd` | `0.0.0-2026-09-06-0133` (exact dependency pin) |
 
-Install the matching [Verus release](https://github.com/verus-lang/verus/releases/tag/release%2F0.2026.09.06.8dea4a2)
+For a manual install, download the matching [Verus release](https://github.com/verus-lang/verus/releases/tag/release%2F0.2026.09.06.8dea4a2)
 for your platform and add its extracted directory to `PATH`. Both `verus` and
 `cargo-verus` should come from that release. Rustup installs the Rust version and
 components declared in `rust-toolchain.toml` when you run Cargo in this directory.

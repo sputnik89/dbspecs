@@ -62,6 +62,37 @@ pub open spec fn records_call<K, V>(
     }
 }
 
+/// A snapshot taken at this call's return extends the handle's previous snapshot.
+pub open spec fn records_call_since<K, V>(
+    before: History<K, V>,
+    after: History<K, V>,
+    session: nat,
+    op: Op<K, V>,
+    reply: Reply<V>,
+) -> bool {
+    // Preserve every event the handle has already observed.
+    &&& before.len() + 2 <= after.len()
+    &&& after.take(before.len() as int) == before
+    // Match this invocation to the returned reply. Other sessions' events can intervene.
+    &&& exists |i: int| #![trigger after[i]]
+        before.len() <= i < after.len() - 1
+            && (match after[i] {
+                Event::Invoke { id, session: caller, op: called } =>
+                    caller == session && called == op && after.last() == (Event::Respond { id, reply }),
+                Event::Respond { .. } => false,
+            })
+            && (forall |j: int| #![trigger after[j]]
+                before.len() <= j < after.len() && after[j].same_session(after[i]) ==> j == i)
+}
+
+/// The snapshot contains no invocation by the newly created session.
+pub open spec fn unused_session<K, V>(history: History<K, V>, session: nat) -> bool {
+    forall |i: int| 0 <= i < history.len() ==> match #[trigger] history[i] {
+        Event::Invoke { session: recorded, .. } => recorded != session,
+        Event::Respond { .. } => true,
+    }
+}
+
 /// Both arguments are invocation indices. The first call returns before the second starts.
 pub open spec fn precedes<K, V>(history: History<K, V>, first: int, second: int) -> bool {
     // The second call must start at an actual event in the history.

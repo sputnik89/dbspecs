@@ -1,7 +1,0 @@
-{
-  "functions": [
-    {"name": "lookup", "spec": "get"},
-    "put"
-  ],
-  "consistency": "sequential_consistency"
-}
