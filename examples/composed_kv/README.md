@@ -1,7 +1,6 @@
 # Generate `api.rs` from JSON
 
-The composer takes a JSON recipe and writes an `api.rs` file with a Verus
-trait and a contract on each selected method.
+The composer takes a JSON recipe and writes an `api.rs` file with a Verus store API with a contract on each selected method.
 
 ## Generate and check `api.rs`
 
@@ -40,8 +39,8 @@ bash examples/composed_kv/run.sh path/to/your-recipe.json
 
 Pick at least one of `"get"`, `"put"`, and `"delete"` for `functions`. To
 rename an operation, use an entry like `{"name": "lookup", "spec": "get"}`.
-Set `consistency` to one of the model names in
-[`tools/compose.py`](../../tools/compose.py).
+Set `consistency` to `"linearizability"`, `"sequential_consistency"`, or
+`"causal_consistency"`. A list of model names requires every model in the list.
 
 If you want to choose where `api.rs` goes, call the composer with `-o`. This
 command writes `api.rs` in the current directory and skips the Verus type
@@ -53,19 +52,17 @@ python3 tools/compose.py examples/composed_kv/spec.json -o api.rs
 
 ## Sessions and contracts
 
-The default recipe gives you these methods.
+The default recipe generates a `KvSession` trait with contracts on `get`,
+`put`, and `delete`. In the example, create a `Store` and call
+`store.open_session()` once for each client. Methods borrow the session with
+`&mut self`, so each session has one call at a time. Sessions on the same
+store can run concurrently.
 
-```rust
-fn new() -> Self
-fn open_session(&self) -> Self
-fn get(&mut self, key: K) -> Option<V>
-fn put(&mut self, key: K, value: V)
-fn delete(&mut self, key: K)
-```
-
-`new` gives you the first handle to an empty store. Call `open_session` to get
-another handle to the same store. With `&mut self`, each handle takes one call
-at a time. Calls on different handles can overlap.
+Each method must extend the session's previous snapshot of the shared history
+with the actual invocation and reply. Calls from other sessions can appear
+between those two events. The selected consistency models check the full
+history up to that reply. `local_history()` keeps just that session's events
+from the snapshot.
 
 ## Run the Rust demo
 
@@ -76,29 +73,31 @@ the default recipe. Run it from the repo root.
 cargo run --locked --example composed_kv
 ```
 
-The demo implements the trait's Rust methods with two shards, each with its
-own lock. Both handles share the shards through an `Arc`. Each thread borrows
-its own handle mutably and writes to a different shard. Once the threads
-finish, each handle reads what the other wrote.
+Both threads write to the same store using separate sessions. After joining,
+each session reads what the other wrote. One lock protects the concrete map.
+The global history, session histories, and proof state are erased from the
+Rust build.
 
 ## Implement the generated API
 
 Copy the generated `api.rs` into a crate that depends on `dbspec` and the
-pinned `vstd`, then import it with `mod api;`. Implement `KvStore<K, V>` and
-add proofs that the handles see prefixes of one shared history and that the
-recorded calls and replies match what the store does.
+pinned `vstd`, then import it with `mod api;` and implement `KvSession<K, V>`.
+Use `call_started` and `call_finished` to state how the actual calls and replies
+extend one shared history. The method contracts check the actual reply and
+the selected models against the session's history snapshot. Your refinement
+proof establishes that every session's snapshot comes from the same store
+execution.
 
-Each contract checks the selected consistency models against the history
-before the call and at return. The return history keeps the earlier events
-and records this call's arguments and actual reply. Events from other
-sessions can appear between invocation and reply.
-
-If you're implementing the default API in the checked-in example, run Verus
-on that target once the implementation and its proofs are in place.
+In the sample, [`main.rs`](main.rs) runs each map operation and shows it matches
+the functional spec. The [refinement proof](refinement.rs) uses the order in
+which operations take effect under the map lock to prove that the shared
+history is linearizable.
 
 ```bash
 cargo verus verify --locked --check-toolchain --example composed_kv
 ```
+
+This command verifies the backend and its proof against the checked-in API.
 
 ## Add a functional spec or consistency model
 

@@ -12,6 +12,35 @@ pub ghost enum Event<K, V> {
 
 pub type History<K, V> = Seq<Event<K, V>>;
 
+/// The client-visible events for one session, in their original order.
+pub open spec fn session_history<K, V>(history: History<K, V>, session: nat) -> History<K, V> {
+    history.filter(|event: Event<K, V>| match event {
+        Event::Invoke { session: caller, .. } => caller == session,
+        Event::Respond { id, .. } => exists |i: int| 0 <= i < history.len()
+            && match #[trigger] history[i] {
+                Event::Invoke { id: call, session: caller, .. } =>
+                    call == id && caller == session,
+                Event::Respond { .. } => false,
+            },
+    })
+}
+
+/// Start a call with a fresh ID. Well-formedness permits one pending call per session.
+pub open spec fn invocation_step<K, V>(
+    before: History<K, V>, after: History<K, V>, id: nat, session: nat, op: Op<K, V>,
+) -> bool {
+    &&& after == before.push(Event::Invoke { id, session, op })
+    &&& well_formed(after)
+}
+
+/// Finish the pending call with this ID. Other sessions' events may intervene.
+pub open spec fn response_step<K, V>(
+    before: History<K, V>, after: History<K, V>, id: nat, reply: Reply<V>,
+) -> bool {
+    &&& after == before.push(Event::Respond { id, reply })
+    &&& well_formed(after)
+}
+
 impl<K, V> Event<K, V> {
     pub open spec fn id(self) -> nat {
         match self {
@@ -83,6 +112,22 @@ pub open spec fn records_call_since<K, V>(
             })
             && (forall |j: int| #![trigger after[j]]
                 before.len() <= j < after.len() && after[j].same_session(after[i]) ==> j == i)
+}
+
+/// The final event is this session's actual reply to a recorded invocation.
+pub open spec fn records_reply<K, V>(
+    history: History<K, V>,
+    session: nat,
+    op: Op<K, V>,
+    reply: Reply<V>,
+) -> bool {
+    exists |i: int| #[trigger] responds_to(history, i, history.len() - 1)
+        && match history[i] {
+            Event::Invoke { id, session: caller, op: called } =>
+                caller == session && called == op
+                    && history.last() == (Event::Respond { id, reply }),
+            Event::Respond { .. } => false,
+        }
 }
 
 /// The snapshot contains no invocation by the newly created session.

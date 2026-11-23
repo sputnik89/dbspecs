@@ -1,11 +1,13 @@
 use crate::consistency::causal_consistency::{
     causally_consistent, valid_causal_execution, valid_causal_view,
 };
-use crate::consistency::history::{precedes, responds_to, Event};
-use crate::consistency::linearizability::valid_linearization;
+use crate::consistency::history::{
+    invocation_step, precedes, responds_to, response_step, session_history, well_formed, Event,
+};
+use crate::consistency::linearizability::{linearizable, valid_linearization};
 use crate::consistency::replay::{legal_replay, ReplayEntry};
 use crate::consistency::sequential_consistency::valid_sequential_order;
-use crate::functional::{Op, Reply};
+use crate::functional::{step, Op, Reply};
 use vstd::prelude::*;
 
 verus! {
@@ -132,6 +134,107 @@ proof fn causal_view_requires_all_predecessors_in_causal_order() {
     assert(legal_replay(initial, reversed_writes));
     assert(causal_order.contains((0nat, 1nat)));
     assert(!valid_causal_view(initial, calls, causal_order, 2, reversed_writes));
+}
+
+proof fn replay_entry_is_invocation<K, V>(initial: Map<K, V>, order: Seq<ReplayEntry<K, V>>, i: int)
+    requires
+        0 <= i < order.len(),
+        legal_replay(initial, order),
+    ensures
+        order[i].invocation is Invoke,
+    decreases order.len(),
+{
+    reveal(legal_replay);
+    match order[0].invocation {
+        Event::Invoke { op, .. } => {
+            if i > 0 {
+                replay_entry_is_invocation(step(initial, op).0, order.skip(1), i - 1);
+            }
+        },
+        Event::Respond { .. } => {},
+    }
+}
+
+// This was admitted when each session could supply its own history.
+proof fn shared_history_rejects_stale_read_after_completed_write() {
+    let initial = Map::<u64, u64>::empty();
+    let put = Event::Invoke { id: 0, session: 0, op: Op::Put(7u64, 1u64) };
+    let ack = Event::Respond { id: 0, reply: Reply::Ack };
+    let get = Event::Invoke { id: 2, session: 1, op: Op::Get(7u64) };
+    let miss = Event::Respond { id: 2, reply: Reply::Value(None) };
+    let history = seq![put, ack, get, miss];
+
+    assert(responds_to(history, 0, 1));
+    assert(responds_to(history, 2, 3));
+    assert(precedes(history, 0, 2));
+    if linearizable(history, initial) {
+        let order = choose |order: Seq<ReplayEntry<u64, u64>>|
+            valid_linearization(history, initial, order);
+        let p = choose |p: int| 0 <= p < order.len() && #[trigger] order[p].invocation == put
+            && order[p].reply == Reply::Ack;
+        let q = choose |q: int| 0 <= q < order.len() && #[trigger] order[q].invocation == get
+            && order[q].reply == Reply::Value(None);
+        assert(p < q);
+        assert forall |i: int| #![trigger order[i]] 0 <= i < order.len() implies
+            (i == p && order[i].invocation == put) || (i == q && order[i].invocation == get) by {
+            assert(history.contains(order[i].invocation));
+            let j = choose |j: int| 0 <= j < history.len() && history[j] == order[i].invocation;
+            assert(j == 0 || j == 1 || j == 2 || j == 3);
+            if j == 1 || j == 3 {
+                replay_entry_is_invocation(initial, order, i);
+                assert(order[i].invocation is Respond);
+            } else if j == 0 {
+                assert(order[i].invocation == put);
+            } else {
+                assert(order[i].invocation == get);
+            }
+        }
+        assert(order[0].invocation == put || order[0].invocation == get);
+        assert(p == 0);
+        assert(order[1].invocation == put || order[1].invocation == get);
+        assert(q == 1);
+        if order.len() > 2 {
+            assert(order[2].invocation == put || order[2].invocation == get);
+            assert(false);
+        }
+        assert(order.len() == 2);
+        reveal_with_fuel(legal_replay, 3);
+        assert(crate::functional::get(initial.insert(7u64, 1u64), 7u64) == Some(1u64));
+        assert(false);
+    }
+}
+
+proof fn abstract_history_allows_overlapping_calls() {
+    let write = Op::Put(7u64, 1u64);
+    let read = Op::Get(7u64);
+    let put = Event::Invoke { id: 0, session: 0, op: write };
+    let get = Event::Invoke { id: 1, session: 1, op: read };
+    let value = Reply::Value(Some(1u64));
+    let ack = Reply::Ack;
+    let read_reply = Event::Respond { id: 1, reply: value };
+    let write_reply = Event::Respond { id: 0, reply: ack };
+    let writer_started = seq![put];
+    let both_started = seq![put, get];
+    let reader_returned = seq![put, get, read_reply];
+    let both_returned = seq![put, get, read_reply, write_reply];
+
+    assert(writer_started.push(get) =~= both_started);
+    assert(both_started.push(read_reply) =~= reader_returned);
+    assert(reader_returned.push(write_reply) =~= both_returned);
+    assert(responds_to(reader_returned, 1, 2));
+    assert(responds_to(both_returned, 1, 2));
+    assert(responds_to(both_returned, 0, 3));
+    assert(well_formed(writer_started));
+    assert(well_formed(both_started));
+    assert(well_formed(reader_returned));
+    assert(well_formed(both_returned));
+    assert(invocation_step(Seq::empty(), writer_started, 0, 0, write));
+    assert(invocation_step(writer_started, both_started, 1, 1, read));
+    assert(response_step(both_started, reader_returned, 1, value));
+    assert(response_step(reader_returned, both_returned, 0, ack));
+    reveal_with_fuel(Seq::filter, 6);
+    assert(session_history(both_returned, 0) =~= seq![put, write_reply]);
+    assert(session_history(both_returned, 1) =~= seq![get, read_reply]);
 }
 
 }
