@@ -7,7 +7,8 @@ use crate::consistency::history::{
 use crate::consistency::linearizability::{linearizable, valid_linearization};
 use crate::consistency::replay::{legal_replay, ReplayEntry};
 use crate::consistency::sequential_consistency::valid_sequential_order;
-use crate::functional::{step, Op, Reply};
+use crate::functional::{Op, Reply};
+use crate::prooflib::history::replay::replay_entry_is_invocation;
 use vstd::prelude::*;
 
 verus! {
@@ -134,25 +135,6 @@ proof fn causal_view_requires_all_predecessors_in_causal_order() {
     assert(legal_replay(initial, reversed_writes));
     assert(causal_order.contains((0nat, 1nat)));
     assert(!valid_causal_view(initial, calls, causal_order, 2, reversed_writes));
-}
-
-proof fn replay_entry_is_invocation<K, V>(initial: Map<K, V>, order: Seq<ReplayEntry<K, V>>, i: int)
-    requires
-        0 <= i < order.len(),
-        legal_replay(initial, order),
-    ensures
-        order[i].invocation is Invoke,
-    decreases order.len(),
-{
-    reveal(legal_replay);
-    match order[0].invocation {
-        Event::Invoke { op, .. } => {
-            if i > 0 {
-                replay_entry_is_invocation(step(initial, op).0, order.skip(1), i - 1);
-            }
-        },
-        Event::Respond { .. } => {},
-    }
 }
 
 // This was admitted when each session could supply its own history.

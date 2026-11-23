@@ -32,12 +32,4 @@ pub open spec fn linearizable<K, V>(history: History<K, V>, initial: Map<K, V>) 
     exists |order: Seq<ReplayEntry<K, V>>| valid_linearization(history, initial, order)
 }
 
-/// The empty client history is valid for any initial map.
-pub proof fn linearizable_empty<K, V>(initial: Map<K, V>)
-    ensures linearizable(Seq::empty(), initial),
-{
-    let history: History<K, V> = Seq::empty();
-    assert(valid_linearization(history, initial, Seq::empty()));
-}
-
 }

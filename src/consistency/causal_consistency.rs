@@ -108,12 +108,4 @@ pub open spec fn causally_consistent<K, V>(history: History<K, V>, initial: Map<
         valid_causal_execution(history, initial, calls, causal_order)
 }
 
-/// The empty client history is valid for any initial map.
-pub proof fn causally_consistent_empty<K, V>(initial: Map<K, V>)
-    ensures causally_consistent(Seq::empty(), initial),
-{
-    let history: History<K, V> = Seq::empty();
-    assert(valid_causal_execution(history, initial, Map::empty(), Set::empty()));
-}
-
 }

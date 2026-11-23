@@ -34,6 +34,18 @@ bash examples/composed_kv/run.sh examples/composed_kv/spec.json
 
 The script type-checks the generated API and saves it to `target/composed-kv/api.rs`.
 
+## Reusable proofs
+
+The [ProofLib prototype](src/prooflib/README.md) separates reusable lemmas from
+the specification definitions. It is currently the `dbspec::prooflib` module
+in this crate, organized into functional laws, history/replay facts, and
+consistency lemmas. Concrete specification regression proofs remain in
+`src/consistency/tests.rs`. Backend-specific proofs remain with their examples.
+
+The three empty-history lemmas now live under
+`dbspec::prooflib::consistency::<model>` instead of the specification modules.
+See the ProofLib README for available lemmas, usage, and verification instructions.
+
 ## Toolchain
 
 Run the installer from the repo root.

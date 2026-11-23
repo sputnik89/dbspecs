@@ -30,12 +30,4 @@ pub open spec fn sequentially_consistent<K, V>(history: History<K, V>, initial: 
     exists |order: Seq<ReplayEntry<K, V>>| valid_sequential_order(history, initial, order)
 }
 
-/// The empty client history is valid for any initial map.
-pub proof fn sequentially_consistent_empty<K, V>(initial: Map<K, V>)
-    ensures sequentially_consistent(Seq::empty(), initial),
-{
-    let history: History<K, V> = Seq::empty();
-    assert(valid_sequential_order(history, initial, Seq::empty()));
-}
-
 }
